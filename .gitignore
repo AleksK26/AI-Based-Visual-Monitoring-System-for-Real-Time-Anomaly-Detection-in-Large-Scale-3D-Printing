@@ -1,0 +1,17 @@
+# Ignore dataset folders
+data/*
+datasets/
+raw/
+temp/
+
+# Ignore specific large data formats
+*.csv
+*.zip
+*.tar.gz
+*.mp4
+
+# DO NOT ignore models (optional: explicitly allow them)
+!*data/scripts
+!*.pth
+!*.h5
+!*.onnx

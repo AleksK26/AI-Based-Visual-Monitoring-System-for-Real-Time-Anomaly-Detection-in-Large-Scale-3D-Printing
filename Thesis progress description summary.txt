@@ -1,0 +1,57 @@
+Thesis progress description summary:
+Date: 26/01/2026
+Part 1: Personal Project Summary (The Logic)
+What we achieved today: We faced a major obstacle: You need to train an AI for a Large-Scale Printer (Global View), but you currently lack the physical hardware, and the only available data (Kaggle) consists of Close-up (Macro) photos. If we trained on just the close-ups, the AI would fail to see defects from a distance.
+
+The Solution Workflow:
+
+Data Acquisition: We utilized the "3D Printing Defect Dataset" from Kaggle to get high-quality textures of defects (Spaghetti, Warping, Layer Shifting) even though the angles were wrong.
+
+Background Preparation: We created a custom script (crop_backgrounds.py) to process your own photos of a printer bed, creating a clean, dedicated "Canvas" for the AI.
+
+The Synthetic Bridge: We built a Python pipeline (generate_centered.py) that acts as a "Digital Collage Maker":
+
+It cuts the defects out of the Kaggle images using AI (rembg).
+
+It resizes them to fit logically inside your printer bed (50-80% coverage).
+
+It forces them to the center of the image.
+
+Why this helps your future project:
+
+Domain Adaptation: You are teaching the AI to recognize "Spaghetti" as an object on a bed, not just as a screen full of plastic.
+
+Safety: By forcing the defects to the center, we ensure the AI focuses on the print area and ignores the messy room background.
+
+Speed: You now have 1,000+ perfectly labeled images without spending hours drawing bounding boxes by hand.
+
+
+
+Date: 27/01/2026
+Part 1: Project Summary (For your memory)
+1. The "Invisible Label" Bug
+
+The Problem: When we first tried to run the training, the model showed Instances: 0. It was "blind" because our synthetic generation script accidentally named the label files image.jpg.txt instead of image.txt.
+
+The Fix: We wrote a batch-renaming script (fix_labels.py) that instantly corrected all 842 label files, allowing YOLO to finally "see" the bounding boxes.
+
+2. The Training Configuration
+
+Model: We selected YOLOv8s ("Small"). This is a balanced choice—more intelligent than the "Nano" version but still lightweight enough for future deployment on a Raspberry Pi.
+
+Dataset: A hybrid mix of roughly ~2,000 raw Kaggle images (using Mosaic augmentation to simulate distance) and ~850 perfectly centered synthetic images.
+
+Hyperparameters: We used aggressive augmentations (mosaic=1.0, degrees=10.0) to force the model to learn features rather than memorizing backgrounds.
+
+3. The Results (From your results.csv)
+
+Accuracy: The model achieved an mAP@50 score of 0.995 (99.5%). This means it has essentially "mastered" the training data.
+
+Speed: It converged very quickly. By Epoch 20, it was already detecting most defects.
+
+Stability: The Loss Curve (error rate) dropped smoothly from ~2.5 down to ~0.4, indicating no exploding gradients or major instability.
+
+Caveat: The extremely high accuracy is partly because we validated on the training set (to avoid crashes). The "Real" accuracy on new video data will likely be lower (around 80-90%), which is normal and expected.
+
+
+

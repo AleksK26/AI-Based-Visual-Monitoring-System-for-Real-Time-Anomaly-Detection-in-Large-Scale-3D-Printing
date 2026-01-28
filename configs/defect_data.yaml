@@ -1,0 +1,15 @@
+# Path to your dataset root (Relative to where you run the command)
+path: C:\Users\hp pc\Desktop\3-D Prining Anomalies\data\processed
+
+# Folders inside that path
+train: images/train
+val: images/train # We can use train for val temporarily if you don't have a split yet
+
+# The specific classes we defined in the scripts
+names:
+  0: Spaghetti
+  1: Warping
+  2: Layer_shifting
+  3: Stringing
+  4: Offplatfrom
+  5: Cracking
