@@ -1,0 +1,19 @@
+# Ignore dataset folders
+data/*
+datasets/
+raw/
+temp/
+
+# Ignore large data 
+*.csv
+*.zip
+*.tar.gz
+*.mp4
+*.avi
+*.mov
+
+# DO NOT ignore 
+!*data/scripts
+!*.pth
+!*.h5
+!*.onnx
