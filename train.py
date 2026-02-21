@@ -37,7 +37,6 @@ def train_model():
         hsv_h=0.015,            # Hue shift (subtle colour variation)
         hsv_s=0.4,              # Saturation shift (handles different lighting)
         hsv_v=0.4,              # Value/brightness shift (day vs night lighting)
-        blur=0.1,               # Random blur (simulates webcam focus drift and Pi cam quality)
 
         # HARDWARE
         device=0,               # Use GPU (change to 'cpu' if no NVIDIA GPU)
