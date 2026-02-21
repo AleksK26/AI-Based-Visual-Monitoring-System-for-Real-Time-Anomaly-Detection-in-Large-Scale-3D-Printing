@@ -3,7 +3,7 @@ path: C:\Users\hp pc\Desktop\3-D Prining Anomalies\data\processed
 
 # Folders inside that path
 train: images/train
-val: images/train # We can use train for val temporarily if you don't have a split yet
+val: images/val
 
 # The specific classes we defined in the scripts
 names:

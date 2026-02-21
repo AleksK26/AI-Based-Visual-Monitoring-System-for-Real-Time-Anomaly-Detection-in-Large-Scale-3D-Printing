@@ -3,44 +3,50 @@ from ultralytics import YOLO
 import cv2
 
 # --- CONFIGURATION ---
-MODEL_PATH = r"C:\Users\hp pc\Desktop\3-D Prining Anomalies\runs\detect\3d_print_monitor\yolov8s_centered_synthetic\weights\best.pt"  # Your trained brain
-TEST_FOLDER = "data/real_world_test" # Where your downloaded videos/images are
+# Updated to use the latest improved model weights.
+# Switch to 'yolov8s_improved_v1' weights after the new training run completes.
+MODEL_PATH = r"runs\detect\3d_print_monitor\yolov8s_centered_synthetic2\weights\best.pt"
+TEST_FOLDER = "data/real_world_test"   # Where your downloaded videos/images are
+
+# Confidence threshold: raised from 0.30 to 0.55 to reduce false positives.
+# If you miss real defects, lower to 0.45. If you still get false alarms, raise to 0.65.
+CONF_THRESHOLD = 0.55
 
 def run_test():
     # 1. Load the model
     if not os.path.exists(MODEL_PATH):
-        print("Error: weights/best.pt not found! Did you move it?")
+        print(f"Error: model not found at {MODEL_PATH}")
+        print("Did you train yet? Run: python train.py")
         return
-    
+
     print(f"Loading model: {MODEL_PATH}...")
     model = YOLO(MODEL_PATH)
 
     # 2. Find all files in the test folder
     files = [f for f in os.listdir(TEST_FOLDER) if f.lower().endswith(('.jpg', '.png', '.mp4', '.avi', '.mov'))]
-    
+
     if not files:
         print(f"No images or videos found in {TEST_FOLDER}. Please add some!")
         return
 
     print(f"Found {len(files)} files to test.")
+    print(f"Confidence threshold: {CONF_THRESHOLD}")
 
-    # 3. Run Prediction
-    # 'conf=0.5' means the AI must be 50% sure to draw a box.
-    # 'save=True' saves the video/image with boxes drawn on it.
+    # 3. Run Prediction with ByteTrack for temporal consistency across video frames
     results = model.track(
-        source=TEST_FOLDER, 
-        conf=0.30,       # Try 0.60 or 0.65.
+        source=TEST_FOLDER,
+        conf=CONF_THRESHOLD,
         iou=0.50,
         agnostic_nms=True,
-        persist=True,      # <--- CRITICAL: Remembers objects between frames, used only with model.track specifically better for videos
-        tracker="bytetrack.yaml", # Standard tracking algorithm
+        persist=True,           # Remembers objects between frames (video only)
+        tracker="bytetrack.yaml",
         save=True,
         project="runs/detect",
         name="real_world_test"
     )
 
     print("-" * 30)
-    print(f"Done! Go check the folder: runs/detect/real_world_test")
+    print(f"Done! Results saved to: runs/detect/real_world_test")
     print("-" * 30)
 
 if __name__ == "__main__":
