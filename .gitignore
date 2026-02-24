@@ -12,7 +12,10 @@ temp/
 *.avi
 *.mov
 
-# DO NOT ignore 
+# Ignore last-epoch checkpoints (only best.pt is needed)
+last.pt
+
+# DO NOT ignore
 !*data/scripts
 !*.pth
 !*.h5
