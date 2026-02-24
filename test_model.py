@@ -3,9 +3,9 @@ from ultralytics import YOLO
 import cv2
 
 # --- CONFIGURATION ---
-# Updated to use the latest improved model weights.
-# Switch to 'yolov8s_improved_v1' weights after the new training run completes.
-MODEL_PATH = r"runs\detect\3d_print_monitor\yolov8s_centered_synthetic2\weights\best.pt"
+# Best performing model: yolov8s_improved_v12 (mAP@50=0.9838)
+# Update this path after each new training run.
+MODEL_PATH = r"runs\detect\runs\detect\3d_print_monitor\yolov8s_improved_v12\weights\best.pt"
 TEST_FOLDER = "data/real_world_test"   # Where your downloaded videos/images are
 
 # Confidence threshold: raised from 0.30 to 0.55 to reduce false positives.
