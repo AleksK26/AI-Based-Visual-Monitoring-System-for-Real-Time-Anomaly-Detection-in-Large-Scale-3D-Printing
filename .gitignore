@@ -15,6 +15,13 @@ temp/
 # Ignore last-epoch checkpoints (only best.pt is needed)
 last.pt
 
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Local Claude Code settings and memory
+.claude/
+
 # DO NOT ignore
 !*data/scripts
 !*.pth

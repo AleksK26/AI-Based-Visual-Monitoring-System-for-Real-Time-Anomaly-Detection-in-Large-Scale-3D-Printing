@@ -42,9 +42,10 @@ def train_model():
         device=0,               # Use GPU (change to 'cpu' if no NVIDIA GPU)
         workers=4,              # Data loading threads
 
-        # NAMING — new name so results don't overwrite previous runs
-        project='runs/detect/3d_print_monitor',
-        name='yolov8s_improved_v1'
+        # NAMING — ultralytics auto-prepends runs/detect/, so use just the project name.
+        # Results save to: runs/detect/3d_print_monitor/yolov8s_improved_v2/
+        project='3d_print_monitor',
+        name='yolov8s_improved_v5'
     )
 
     # 3. Validation against the real val split
@@ -58,7 +59,7 @@ def train_model():
     # 4. Export for Deployment (Raspberry Pi / edge format)
     print("Exporting to ONNX for edge deployment...")
     model.export(format='onnx')
-    print("Done. Check runs/detect/3d_print_monitor/yolov8s_improved_v1/")
+    print("Done. Check runs/detect/3d_print_monitor/yolov8s_improved_v5/")
 
 if __name__ == '__main__':
     train_model()

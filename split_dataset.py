@@ -63,8 +63,7 @@ def split():
     print(f"Split complete.")
     print(f"  Train: {len(train_images)} images  ->  {IMAGES_TRAIN}")
     print(f"  Val  : {moved} images             ->  {IMAGES_VAL}")
-    print(f"\nNow update configs/defect_data.yaml: val: images/val")
-    print("Then retrain with: python train.py")
+    print(f"\nNext: python train.py")
 
 if __name__ == "__main__":
     split()

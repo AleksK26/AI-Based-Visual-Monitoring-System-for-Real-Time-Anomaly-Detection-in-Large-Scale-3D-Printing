@@ -24,7 +24,7 @@ from src.detector import Detector
 from src.printer_interface import PrinterInterface
 
 # --- CONFIGURATION ---
-DEFAULT_MODEL  = r"runs\detect\3d_print_monitor\yolov8s_centered_synthetic2\weights\best.pt"
+DEFAULT_MODEL  = r"runs\detect\3d_print_monitor\yolov8s_improved_v5\weights\best.pt"
 CONF_THRESHOLD = 0.55       # Confidence to count a detection
 PERSISTENCE    = 5          # Consecutive frames needed before pausing printer
 TARGET_FPS     = 1          # How many frames per second to analyse (1 is enough)
