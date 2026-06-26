@@ -1,39 +1,25 @@
 import os
 import cv2
 import torch
-from collections import deque
+from collections import deque, defaultdict
 from pathlib import Path
 from ultralytics import YOLO
+
+# Shared inference config — single source of truth (keeps offline test_model.py and the
+# live src/detector.py / main.py path from drifting apart).
+from src.detector import (
+    BASE_CONF,
+    IOU_THRESHOLD,
+    TEMPORAL_WINDOW,
+    TEMPORAL_MIN_HITS,
+    CLASS_THRESHOLDS,
+)
 
 torch.backends.cudnn.benchmark = False
 
 # --- CONFIGURATION ---
-MODEL_PATH = r"runs\detect\3d_print_monitor\yolov8s_improved_v52\weights\best.pt"
+MODEL_PATH = r"runs\detect\3d_print_monitor\yolo11s_improved_v7\weights\best.pt"
 TEST_FOLDER = "data/real_world_test"
-
-# Cast a wide net — per-class thresholds do the real filtering below.
-BASE_CONF = 0.25
-IOU_THRESHOLD = 0.50
-
-# Temporal smoother for video: a class must appear in at least TEMPORAL_MIN_HITS
-# of the last TEMPORAL_WINDOW frames to be drawn. Suppresses single-frame FP flicker.
-TEMPORAL_WINDOW   = 7
-TEMPORAL_MIN_HITS = 5
-
-# Per-class thresholds derived from v6 (yolov8s_improved_v52) F1-curve + confusion matrix.
-#   Global F1-optimal: 0.542 | mAP@50: 0.964
-#   Spaghetti:      raised well above optimal — background FP 0.47 (regressed vs v5)
-#   Warping:        stable — background FP 0.19
-#   Layer_shifting: near F1-optimal — near-perfect class (diagonal 0.99)
-#   Stringing:      lowered — real images halved background FP (0.47→0.22), recover recall
-#   Cracking:       near F1-optimal — minor FP (0.06)
-CLASS_THRESHOLDS = {
-    "Spaghetti":      0.75,   # background FP 0.47 — push high to suppress real-world FP
-    "Warping":        0.55,   # background FP 0.19 — stable
-    "Layer_shifting": 0.50,   # near-perfect, minor FP (0.06)
-    "Stringing":      0.55,   # lowered too aggressively — real-world FP, raise back up
-    "Cracking":       0.70,   # Kaggle bias: gold object → Cracking FP, raise until retrain fixes it
-}
 
 # Box colours per class (BGR)
 COLORS = {
@@ -42,6 +28,7 @@ COLORS = {
     "Layer_shifting": (0,   255, 255),
     "Stringing":      (255, 0,   0  ),
     "Cracking":       (0,   255, 0  ),
+    "Blob_of_death":  (255, 0,   255),
 }
 
 
@@ -62,6 +49,51 @@ def filter_detections(result, names):
                 "box": [int(v) for v in box.xyxy[0].tolist()],
             })
     return kept
+
+
+def _find(parent, i):
+    while parent[i] != i:
+        parent[i] = parent[parent[i]]
+        i = parent[i]
+    return i
+
+
+def merge_detections(detections, frame_w, frame_h, dilate=0.03):
+    """Merge overlapping/adjacent same-class boxes into one.
+
+    Fixes fragmented output (e.g. a single crack split into 16 boxes — the Roboflow
+    cracking labels average ~7 boxes/image, so the model learned to over-emit). Same-class
+    boxes whose boxes, dilated by `dilate` of the frame, intersect are unioned via union-find;
+    each cluster becomes one box spanning its members with the max confidence.
+    """
+    mx, my = dilate * frame_w, dilate * frame_h
+    by_cls = defaultdict(list)
+    for d in detections:
+        by_cls[d["class_name"]].append(d)
+
+    out = []
+    for cls, group in by_cls.items():
+        n = len(group)
+        parent = list(range(n))
+        for i in range(n):
+            ax1, ay1, ax2, ay2 = group[i]["box"]
+            for j in range(i + 1, n):
+                bx1, by1, bx2, by2 = group[j]["box"]
+                if (ax1 - mx <= bx2 and bx1 <= ax2 + mx and
+                        ay1 - my <= by2 and by1 <= ay2 + my):
+                    parent[_find(parent, i)] = _find(parent, j)
+
+        clusters = defaultdict(list)
+        for i in range(n):
+            clusters[_find(parent, i)].append(group[i])
+        for members in clusters.values():
+            out.append({
+                "class_name": cls,
+                "confidence": max(m["confidence"] for m in members),
+                "box": [min(m["box"][0] for m in members), min(m["box"][1] for m in members),
+                        max(m["box"][2] for m in members), max(m["box"][3] for m in members)],
+            })
+    return out
 
 
 def draw_detections(frame, detections):
@@ -94,6 +126,7 @@ def process_image(model, path, out_dir):
         verbose=False,
     )
     detections = filter_detections(results[0], model.names)
+    detections = merge_detections(detections, frame.shape[1], frame.shape[0])
     draw_detections(frame, detections)
     out_path = out_dir / Path(path).name
     cv2.imwrite(str(out_path), frame)
@@ -136,6 +169,7 @@ def process_video(model, path, out_dir, total_frames=0):
                 class_hits[cls] = class_hits.get(cls, 0) + 1
         # Only draw detections for classes stable across the window
         stable_dets = [d for d in raw_dets if class_hits.get(d["class_name"], 0) >= TEMPORAL_MIN_HITS]
+        stable_dets = merge_detections(stable_dets, frame.shape[1], frame.shape[0])
         draw_detections(frame, stable_dets)
         writer.write(frame)
         total_detections += len(stable_dets)
