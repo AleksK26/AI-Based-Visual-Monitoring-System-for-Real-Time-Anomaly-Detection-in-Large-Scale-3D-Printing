@@ -20,9 +20,15 @@ IMAGES_PER_CLASS = 150
 # Per-class override — classes whose Kaggle real images are too homogeneous
 # to use directly get 300 synthetics to carry the full load.
 # All other classes: 150 synthetic + 150 real = 300 total.
+# v6: Warping/Layer_shifting are NOT covered by the Roboflow real datasets
+# (which only supply Spaghetti/Stringing/Cracking), so synthetics carry these two.
+# Modest boost only — compositing reuses the same few Kaggle source crops, so
+# pushing counts much higher just repositions duplicates (diminishing returns).
 CLASS_COUNT_OVERRIDE = {
-    "Stringing": 300,
-    "Warping":   300,
+    "Stringing":      300,
+    "Warping":        400,
+    "Layer_shifting": 400,
+    "Blob_of_death":  150,   # v7: only 26 real blobs — composite to give the class volume
 }
 
 TARGET_SIZE = (640, 640)
@@ -35,6 +41,13 @@ CLASS_MAP = {
     "Layer_shifting": 2,
     "Stringing":     3,
     "Cracking":      4,
+    "Blob_of_death": 5,      # v7: new class
+}
+
+# Most classes source from RAW_DATA_ROOT/<class>. Blob_of_death has no Kaggle folder —
+# its source is the scraped real blobs, which rembg + compositing turns into volume.
+SOURCE_DIR_OVERRIDE = {
+    "Blob_of_death": "data/real_blob_of_death",
 }
 
 
@@ -49,7 +62,7 @@ def build_defect_cache(session):
     total_files = 0
 
     for class_name in CLASS_MAP:
-        folder = os.path.join(RAW_DATA_ROOT, class_name)
+        folder = SOURCE_DIR_OVERRIDE.get(class_name, os.path.join(RAW_DATA_ROOT, class_name))
         if not os.path.exists(folder):
             print(f"  WARNING: source folder not found: {folder}")
             continue

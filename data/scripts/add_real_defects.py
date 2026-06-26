@@ -26,24 +26,24 @@ RAW_DATA_ROOT  = "data/3D-Printing-Defect-Dataset/data"
 SAMPLES_PER_CLASS = 150
 SEED = 42
 
-# Warping is EXCLUDED from direct real-image training.
-# The Kaggle dataset comes from a homogeneous experimental setup (same printer,
-# same yellow warning label, same gold objects, same white background). Adding
-# it directly teaches the model "yellow label + fan = defect" rather than
-# actual defect appearance. Warping still contributes through
-# syntetic_generated_data.py where rembg strips the biased background away.
+# The Kaggle Warping/Cracking/Stringing folders are EXCLUDED from direct real-image
+# training because they come from a homogeneous lab setup (same printer, same yellow
+# warning label, same gold/brass objects, white background) or are macro lab towers.
+# Adding them directly taught v5 "gold object = Cracking" / "yellow label = Warping"
+# rather than actual defect appearance.
 #
-# Cracking is also EXCLUDED — same Kaggle lab setup, all images show the same
-# gold/brass colored test object being printed. Model learned "gold object =
-# Cracking" rather than actual crack appearance. Use synthetic only.
+# v6 FIX: Warping and Cracking now get COLOUR-DIVERSE real images from the scraper
+# (data/scripts/scraper/), which land in data/real_warping/ and data/real_cracking/.
+# Those break the colour bias the Kaggle sets caused. The Kaggle classes still
+# contribute via syntetic_generated_data.py (rembg strips the biased background).
 #
-# Stringing Kaggle dataset is also EXCLUDED — all images are macro close-ups
-# of small lab test towers, not webcam-above-bed shots. Use data/real_stringing/
-# instead (wide-angle Reddit images collected specifically for this use case).
-#
+# v6: Spaghetti is now covered abundantly by the Roboflow real datasets with TIGHT
+# boxes (~12.5k boxes). The loose 0.5/0.5/0.85/0.85 Kaggle Spaghetti boxes would
+# conflict with those tight boxes and soften localization, so Spaghetti is dropped
+# here and sourced from Roboflow instead. Layer_shifting has NO Roboflow source, so
+# its Kaggle close-ups stay.
 # Must match configs/defect_data.yaml exactly for all included classes.
 CLASS_MAP = {
-    "Spaghetti":      0,
     "Layer_shifting": 2,
 }
 
@@ -53,6 +53,16 @@ CLASS_MAP = {
 REAL_STRINGING_DIR = "data/real_stringing"
 STRINGING_CLASS_ID = 3
 
+# Scraped colour-diverse real defects (data/scripts/scraper/). These REPLACE the
+# excluded gold-biased Kaggle sets and are the v6 fix for the "gold = defect" bias.
+# (key, src_dir, class_id) — class ids must match configs/defect_data.yaml.
+SCRAPED_REAL_DEFECTS = [
+    ("Cracking",       "data/real_cracking",        4),
+    ("Warping",        "data/real_warping",         1),
+    ("Blob_of_death",  "data/real_blob_of_death",   5),
+    ("Layer_shifting", "data/real_layer_shifting",  2),  # v8: colour-diverse real layer-shift (was gold-only)
+]
+
 # The defect fills ~85% of the close-up frame — approximate full-image bbox.
 # Also reasonable for wide-angle stringing shots where threads span the print.
 BBOX = "0.5 0.5 0.85 0.85"
@@ -61,7 +71,15 @@ ACCEPTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 
 
 def add_class_images(src_dir, class_name, class_id, max_samples, output_img_dir, output_lbl_dir):
-    """Copy up to max_samples images from src_dir into the training set."""
+    """Copy up to max_samples images from src_dir into the training set.
+
+    If an image carries a sidecar YOLO label (<stem>.txt next to it), that TIGHT
+    auto/hand label is used verbatim — this is the v7 fix for Warping/Cracking/Blob,
+    which were previously force-boxed at the loose 0.85 full frame (the warping box
+    overlapped Layer_shifting geometry and broke the class). Images with no sidecar
+    fall back to the legacy near-full-frame BBOX — fine for wide-angle Stringing and
+    the Kaggle Layer_shifting close-ups where the defect spans the frame.
+    """
     images = [f for f in Path(src_dir).iterdir()
               if f.suffix.lower() in ACCEPTED_EXTENSIONS]
 
@@ -72,13 +90,21 @@ def add_class_images(src_dir, class_name, class_id, max_samples, output_img_dir,
     n = min(max_samples, len(images))
     sampled = random.sample(images, n)
 
+    sidecar_used = 0
     for i, img_path in enumerate(sampled):
         dst_img = Path(output_img_dir) / f"real_{class_name}_{i}{img_path.suffix}"
         dst_lbl = Path(output_lbl_dir) / f"real_{class_name}_{i}.txt"
         shutil.copy2(img_path, dst_img)
-        dst_lbl.write_text(f"{class_id} {BBOX}\n")
 
-    print(f"  {class_name}: {n}/{len(images)} images added (class {class_id})")
+        sidecar = img_path.with_suffix(".txt")
+        if sidecar.exists() and sidecar.read_text().strip():
+            dst_lbl.write_text(sidecar.read_text())  # tight per-image label
+            sidecar_used += 1
+        else:
+            dst_lbl.write_text(f"{class_id} {BBOX}\n")  # legacy full-frame fallback
+
+    tag = f"{sidecar_used} tight sidecar labels" if sidecar_used else "full-frame fallback"
+    print(f"  {class_name}: {n}/{len(images)} images added (class {class_id}) [{tag}]")
     return n
 
 
@@ -105,6 +131,16 @@ def main():
                                    9999, OUTPUT_IMG_DIR, OUTPUT_LBL_DIR)
     else:
         print(f"  WARNING: {REAL_STRINGING_DIR} not found — Stringing gets no real images")
+
+    # Scraped colour-diverse Cracking / Warping — take up to SAMPLES_PER_CLASS each.
+    for cls_name, src_dir, class_id in SCRAPED_REAL_DEFECTS:
+        d = Path(src_dir)
+        if d.exists() and any(p.suffix.lower() in ACCEPTED_EXTENSIONS for p in d.iterdir()):
+            total += add_class_images(d, cls_name, class_id, SAMPLES_PER_CLASS,
+                                      OUTPUT_IMG_DIR, OUTPUT_LBL_DIR)
+        else:
+            print(f"  NOTE: {src_dir} empty/missing — {cls_name} stays synthetic-only "
+                  f"(run data/scripts/scraper/run.py to populate it)")
 
     print(f"\nTotal real defect images added: {total}")
     print("Next step: python data/scripts/add_negatives.py")

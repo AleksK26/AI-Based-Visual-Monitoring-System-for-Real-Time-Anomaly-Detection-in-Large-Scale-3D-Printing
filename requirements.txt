@@ -1,0 +1,20 @@
+# Core training / inference pipeline
+ultralytics
+streamlit            # app.py — real-time monitoring dashboard
+opencv-python
+rembg
+torch
+torchvision
+tqdm
+pillow
+numpy
+pyyaml
+
+# --- Data scraping pipeline (data/scripts/scraper/) ---
+google-genai         # Gemini vision verification (needs GEMINI_API_KEY — free tier)
+ddgs                 # DuckDuckGo image search (keyless)
+icrawler             # Google / Bing / Baidu image crawlers (keyless)
+imagehash            # perceptual de-duplication
+requests
+# anthropic          # OPTIONAL: alternative Claude verifier backend
+# praw               # OPTIONAL: Reddit source (needs REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET)

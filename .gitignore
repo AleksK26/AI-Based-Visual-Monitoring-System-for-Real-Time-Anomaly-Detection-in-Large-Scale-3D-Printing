@@ -1,29 +1,54 @@
-# Ignore dataset folders
+# =====================================================================
+# Datasets — never committed (images, labels, scrapes, synthetic data).
+# Only the pipeline CODE under data/scripts/ is tracked.
+# =====================================================================
 data/*
-datasets/
-raw/
-temp/
+!data/scripts/
+data/scripts/_label_qa/
 
-# Ignore large data 
+# =====================================================================
+# Model weights & training runs — large binaries, kept local only.
+# Reproduce them with build_dataset.py + train.py.
+# =====================================================================
+runs/
+*.pt
+*.onnx
+*.pth
+*.h5
+*.engine
+*.tflite
+
+# =====================================================================
+# Bulky / generated data formats
+# =====================================================================
 *.csv
 *.zip
 *.tar.gz
 *.mp4
 *.avi
 *.mov
+datasets/
+raw/
+temp/
 
-# Ignore last-epoch checkpoints (only best.pt is needed)
-last.pt
-
-# Python bytecode cache
+# =====================================================================
+# Python
+# =====================================================================
 __pycache__/
 *.pyc
+*.pyo
+.venv/
+venv/
 
-# Local Claude Code settings and memory
+# =====================================================================
+# Thesis source & figures — kept out of the code repo. Publish the paper
+# via a proper venue (arXiv / Zenodo / university repository), not here.
+# =====================================================================
+thesislatex/
+
+# =====================================================================
+# Secrets & local tooling
+# =====================================================================
+.env
 .claude/
-
-# DO NOT ignore
-!*data/scripts
-!*.pth
-!*.h5
-!*.onnx
+.DS_Store

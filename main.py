@@ -20,15 +20,14 @@ import time
 import cv2
 
 from src.camera import Camera
-from src.detector import Detector
+from src.detector import Detector, TEMPORAL_MIN_HITS
 from src.printer_interface import PrinterInterface
 
 # --- CONFIGURATION ---
-DEFAULT_MODEL  = r"runs\detect\3d_print_monitor\yolov8s_improved_v5\weights\best.pt"
-CONF_THRESHOLD = 0.55       # Confidence to count a detection
-PERSISTENCE    = 5          # Consecutive frames needed before pausing printer
-TARGET_FPS     = 1          # How many frames per second to analyse (1 is enough)
-DISPLAY        = True       # Show annotated frames in a window (set False on Pi)
+# Model + per-class thresholds + temporal smoother live in src/detector.py (single source
+# of truth, shared with test_model.py). main.py only owns the loop and display.
+TARGET_FPS = 1              # How many frames per second to analyse (1 is enough)
+DISPLAY    = True           # Show annotated frames in a window (set False on Pi)
 
 
 def parse_args():
@@ -38,22 +37,18 @@ def parse_args():
         help="Camera index (0) or path to video/image file."
     )
     parser.add_argument(
-        "--model", default=DEFAULT_MODEL,
-        help="Path to trained YOLOv8 .pt weights."
+        "--model", default=Detector.DEFAULT_MODEL,
+        help="Path to trained YOLO .pt weights."
     )
     parser.add_argument(
-        "--conf", type=float, default=CONF_THRESHOLD,
-        help="Confidence threshold (0–1)."
-    )
-    parser.add_argument(
-        "--persistence", type=int, default=PERSISTENCE,
-        help="Consecutive frames required to trigger a pause."
+        "--min-hits", type=int, default=TEMPORAL_MIN_HITS,
+        help="Frames (of the rolling window) a class must appear in to trigger a pause."
     )
     return parser.parse_args()
 
 
-def draw_detections(frame, detections, consecutive_hits, persistence):
-    """Overlay bounding boxes and status HUD on the frame."""
+def draw_detections(frame, detections, class_hits, min_hits):
+    """Overlay bounding boxes and a class-aware status HUD on the frame."""
     for det in detections:
         x1, y1, x2, y2 = [int(v) for v in det["box"]]
         label = f"{det['class_name']} {det['confidence']:.2f}"
@@ -61,10 +56,23 @@ def draw_detections(frame, detections, consecutive_hits, persistence):
         cv2.putText(frame, label, (x1, y1 - 8),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
-    status = f"Hits: {consecutive_hits}/{persistence}"
-    color = (0, 255, 0) if consecutive_hits == 0 else (0, 165, 255)
-    cv2.putText(frame, status, (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+    # Per-class hit counters (e.g. "Spaghetti 3/5"); turns orange as a class approaches
+    # the pause threshold, red once it crosses it.
+    if class_hits:
+        y = 30
+        for cls, hits in sorted(class_hits.items(), key=lambda kv: -kv[1]):
+            if hits >= min_hits:
+                color = (0, 0, 255)
+            elif hits > 0:
+                color = (0, 165, 255)
+            else:
+                color = (0, 255, 0)
+            cv2.putText(frame, f"{cls}: {hits}/{min_hits}", (10, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            y += 32
+    else:
+        cv2.putText(frame, "Monitoring - clean", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
     return frame
 
 
@@ -79,14 +87,13 @@ def main():
 
     detector = Detector(
         model_path=args.model,
-        conf=args.conf,
-        persistence_frames=args.persistence,
+        min_hits=args.min_hits,
     )
     printer = PrinterInterface()
     frame_interval = 1.0 / TARGET_FPS
 
     print(f"[Main] Starting monitoring — source: {source}")
-    print(f"[Main] Persistence filter: {args.persistence} consecutive frames")
+    print(f"[Main] Temporal smoother: {args.min_hits}/{detector.window} frames per class")
     print(f"[Main] Press 'q' to quit.\n")
 
     paused = False
@@ -104,10 +111,10 @@ def main():
 
             if detections:
                 names = [d["class_name"] for d in detections]
-                print(f"[Detector] Frame hit {detector.consecutive_hits}/{args.persistence} — {names}")
+                print(f"[Detector] {names} — hits {detector.class_hits}")
 
             if should_pause and not paused and printer.is_printing():
-                print("[Main] *** DEFECT CONFIRMED — Pausing printer! ***")
+                print(f"[Main] *** DEFECT CONFIRMED ({detector.triggered_classes}) — Pausing printer! ***")
                 success = printer.pause_print()
                 if success:
                     paused = True
@@ -117,7 +124,7 @@ def main():
             if DISPLAY:
                 annotated = draw_detections(
                     frame.copy(), detections,
-                    detector.consecutive_hits, args.persistence
+                    detector.class_hits, args.min_hits
                 )
                 cv2.imshow("3D Print Monitor", annotated)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
