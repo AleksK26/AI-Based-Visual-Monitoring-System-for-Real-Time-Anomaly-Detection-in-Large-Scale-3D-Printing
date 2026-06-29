@@ -29,6 +29,7 @@ import streamlit as st
 
 from src.detector import Detector, CLASS_THRESHOLDS, TEMPORAL_MIN_HITS, TEMPORAL_WINDOW
 from src.printer_interface import PrinterInterface
+from src.notifier import Notifier
 
 # Per-class overlay colours (RGB, for st.image which expects RGB).
 COLORS = {
@@ -53,6 +54,11 @@ def load_detector(model_path: str, min_hits: int) -> Detector:
 @st.cache_resource(show_spinner=False)
 def get_printer() -> PrinterInterface:
     return PrinterInterface()
+
+
+@st.cache_resource(show_spinner=False)
+def get_notifier() -> Notifier:
+    return Notifier()
 
 
 def draw(frame_bgr, detections):
@@ -99,8 +105,11 @@ min_hits = st.sidebar.slider("Trigger hits (of last %d frames)" % TEMPORAL_WINDO
                                   f"{TEMPORAL_WINDOW} analysed frames to trigger a pause.")
 
 printer = get_printer()
+notifier = get_notifier()
 st.sidebar.caption(f"Printer mode: **{printer._mode.upper()}**"
                    + (f" · {printer.firmware.upper()}" if printer._mode == "live" else ""))
+st.sidebar.caption("Alerts: **" + (", ".join(notifier.channels) if notifier.channels
+                                   else "console only") + "**")
 
 c1, c2 = st.sidebar.columns(2)
 if c1.button("▶ Start", use_container_width=True, disabled=ss.monitoring):
@@ -188,14 +197,24 @@ if ss.monitoring and ss.cap is not None:
 
     if ret:
         should_pause, detections = detector.trigger(frame)
-        frame_ph.image(draw(frame.copy(), detections), use_container_width=True)
+        annotated_rgb = draw(frame.copy(), detections)
+        frame_ph.image(annotated_rgb, use_container_width=True)
         render_status(detector, detections)
 
-        if should_pause and not ss.system_paused and printer.is_printing():
-            if printer.pause_print():
+        if should_pause and not ss.system_paused:
+            triggered = list(detector.triggered_classes)
+            # Snapshot the annotated frame for the alert (RGB -> BGR for the notifier).
+            snapshot = cv2.cvtColor(annotated_rgb, cv2.COLOR_RGB2BGR)
+            if printer.is_printing() and printer.pause_print():
                 ss.system_paused = True
-                ss.last_event = f"AUTO-PAUSE: {', '.join(detector.triggered_classes)}"
+                ss.last_event = f"AUTO-PAUSE: {', '.join(triggered)}"
+                notifier.notify_defect(triggered, frame_bgr=snapshot, paused=True)
                 detector.reset()
+            else:
+                # Defect confirmed but printer idle/unreachable — still alert the user.
+                # The notifier's per-class cooldown stops this firing every frame.
+                notifier.notify_defect(triggered, frame_bgr=snapshot, paused=False)
+                ss.last_event = f"DEFECT: {', '.join(triggered)} (no auto-pause)"
 
         time.sleep(ANALYSE_INTERVAL)
         st.rerun()

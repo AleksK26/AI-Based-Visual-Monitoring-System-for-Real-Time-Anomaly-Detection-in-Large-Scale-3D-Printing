@@ -22,6 +22,7 @@ import cv2
 from src.camera import Camera
 from src.detector import Detector, TEMPORAL_MIN_HITS
 from src.printer_interface import PrinterInterface
+from src.notifier import Notifier
 
 # --- CONFIGURATION ---
 # Model + per-class thresholds + temporal smoother live in src/detector.py (single source
@@ -90,6 +91,7 @@ def main():
         min_hits=args.min_hits,
     )
     printer = PrinterInterface()
+    notifier = Notifier()
     frame_interval = 1.0 / TARGET_FPS
 
     print(f"[Main] Starting monitoring — source: {source}")
@@ -113,13 +115,23 @@ def main():
                 names = [d["class_name"] for d in detections]
                 print(f"[Detector] {names} — hits {detector.class_hits}")
 
-            if should_pause and not paused and printer.is_printing():
-                print(f"[Main] *** DEFECT CONFIRMED ({detector.triggered_classes}) — Pausing printer! ***")
-                success = printer.pause_print()
-                if success:
-                    paused = True
-                    detector.reset()
-                    print("[Main] Printer paused. Monitoring continues.")
+            if should_pause and not paused:
+                triggered = list(detector.triggered_classes)
+                # Annotated snapshot for the alert.
+                snapshot = draw_detections(frame.copy(), detections,
+                                           detector.class_hits, args.min_hits)
+                if printer.is_printing():
+                    print(f"[Main] *** DEFECT CONFIRMED ({triggered}) — Pausing printer! ***")
+                    success = printer.pause_print()
+                    if success:
+                        paused = True
+                        notifier.notify_defect(triggered, frame_bgr=snapshot, paused=True)
+                        detector.reset()
+                        print("[Main] Printer paused. Monitoring continues.")
+                else:
+                    # Defect confirmed but printer idle/unreachable — alert anyway.
+                    # The notifier's per-class cooldown prevents per-frame spam.
+                    notifier.notify_defect(triggered, frame_bgr=snapshot, paused=False)
 
             if DISPLAY:
                 annotated = draw_detections(
